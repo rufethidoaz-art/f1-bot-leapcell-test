@@ -23,7 +23,7 @@ spec:
 
   # Docker configuration
   image:
-    repository: your-registry/f1-bot-leapcell
+    repository: f1-bot-leapcell
     tag: latest
     build:
       dockerfile: Dockerfile

@@ -21,10 +21,33 @@
 ## Deployment
 
 1. Create a Leapcell account at [leapcell.io](https://leapcell.io)
-2. Connect your Git repository
-3. Use the `leapcell.yaml` configuration file
-4. Set environment variable: `TELEGRAM_BOT_TOKEN`
-5. Deploy your container!
+2. Connect your GitHub repository: `https://github.com/rufethidoaz-art/f1-bot-leapcell-test.git`
+3. Configure the service with these settings:
+
+### Basic Settings
+- **Service Name**: `f1-bot-leapcell-test` (or your choice)
+- **Region**: Choose closest to your location (e.g., N. Virginia, US East)
+- **Branch**: `master`
+- **Root Directory**: `./`
+
+### Build & Run Settings
+- **Framework Preset**: Select `Python`
+- **Runtime**: `python3.12-slim-bookworm` (recommended)
+- **Build Command**: `pip install -r requirements.txt`
+- **Start Command**: `gunicorn --bind :8080 --workers 1 --timeout 120 leapcell_f1_bot:app`
+- **Serving Port**: `8080`
+
+### Environment Variables
+Add this environment variable:
+- **Key**: `TELEGRAM_BOT_TOKEN`
+- **Value**: Your bot token from [@BotFather](https://t.me/BotFather)
+
+### Resource Settings
+- **Memory**: `512 MB` (minimum recommended)
+- **CPU**: `2 Core(s)`
+
+4. Click **"Deploy"** and wait for the build to complete
+5. Your F1 bot will be live on Leapcell! 🏎️
 
 ## Environment Variables
 
