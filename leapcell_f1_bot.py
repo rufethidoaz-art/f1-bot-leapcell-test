@@ -12,7 +12,7 @@ import threading
 
 from telegram import Update, Message, InlineKeyboardButton, InlineKeyboardMarkup
 from telegram.ext import Application, CommandHandler, CallbackQueryHandler, ContextTypes
-from flask import Flask
+from flask import Flask, request
 
 # Azerbaijani translations
 TRANSLATIONS = {
@@ -2070,7 +2070,7 @@ BOT_APP = None
 
 # ==================== MAIN ====================
 
-# Flask app for Render deployment
+# Flask app for Leapcell deployment
 app = Flask(__name__)
 
 @app.route('/')
@@ -2083,6 +2083,7 @@ def home():
         "deployment": "Leapcell",
         "features": {
             "containerized": True,
+            "webhook_mode": True,
             "optimized_scraping": True,
             "enhanced_error_handling": True
         }
@@ -2093,8 +2094,31 @@ def health_check():
     """Health check endpoint"""
     return {"status": "healthy", "service": "F1 Telegram Bot Leapcell Test"}
 
+@app.route('/webhook', methods=['POST'])
+async def webhook():
+    """Handle Telegram webhook updates"""
+    try:
+        if BOT_APP is None:
+            logging.error("Bot application not initialized")
+            return 'ERROR', 500
+
+        update_data = request.get_json()
+        if update_data:
+            update = Update.de_json(update_data, BOT_APP.bot)
+            # Process update in the bot's event loop
+            import asyncio
+            loop = asyncio.new_event_loop()
+            asyncio.set_event_loop(loop)
+            loop.run_until_complete(BOT_APP.process_update(update))
+            return 'OK', 200
+        else:
+            return 'NO DATA', 400
+    except Exception as e:
+        logging.error(f"Webhook error: {e}")
+        return 'ERROR', 500
+
 def setup_bot():
-    """Setup and start the Telegram bot"""
+    """Setup and start the Telegram bot with webhooks"""
     try:
         from dotenv import load_dotenv
         load_dotenv(override=False)
@@ -2128,7 +2152,7 @@ def setup_bot():
 
     # Create application
     application = Application.builder().token(BOT_TOKEN).build()
-    
+
     # store global reference
     global BOT_APP
     BOT_APP = application
@@ -2149,21 +2173,57 @@ def setup_bot():
     application.add_handler(CommandHandler("streamhelp", streamhelp_cmd))
     application.add_handler(CallbackQueryHandler(button_handler))
 
-    # Start bot in background thread
-    def run_bot():
+    # Setup webhook instead of polling
+    def setup_webhook():
         try:
+            # Get the webhook URL from environment or construct it
+            webhook_url = os.getenv("WEBHOOK_URL")
+            if not webhook_url:
+                # Try to construct from Leapcell environment
+                leapcell_url = os.getenv("LEAPCELL_URL")
+                if leapcell_url:
+                    webhook_url = f"{leapcell_url}/webhook"
+                else:
+                    # Fallback for local development
+                    webhook_url = "https://your-leapcell-service-url/webhook"
+
+            print("☁️ Leapcell F1 Bot is starting...")
+            print(f"🔗 Setting up webhook: {webhook_url}")
+
+            # Set webhook
+            import asyncio
             loop = asyncio.new_event_loop()
             asyncio.set_event_loop(loop)
-            print("☁️ Leapcell F1 Bot is starting...")
-            print("🤖 Bot is ready and polling for updates...")
-            application.run_polling(allowed_updates=Update.ALL_TYPES, stop_signals=None)
-        except KeyboardInterrupt:
-            print("\n👋 Bot stopped by user")
-        except Exception as e:
-            print(f"❌ Error occurred: {e}")
 
-    # Start bot in background thread
-    bot_thread = threading.Thread(target=run_bot, daemon=True)
+            async def set_webhook_async():
+                try:
+                    await application.bot.set_webhook(url=webhook_url)
+                    print("✅ Webhook set successfully!")
+                    print("🤖 Bot is ready and waiting for webhook updates...")
+                except Exception as e:
+                    print(f"❌ Failed to set webhook: {e}")
+                    print("🔄 Falling back to polling mode...")
+                    # Fallback to polling if webhook fails
+                    try:
+                        await application.run_polling(allowed_updates=Update.ALL_TYPES, stop_signals=None)
+                    except Exception as poll_e:
+                        print(f"❌ Polling also failed: {poll_e}")
+
+            loop.run_until_complete(set_webhook_async())
+
+        except Exception as e:
+            print(f"❌ Webhook setup error: {e}")
+            print("🔄 Falling back to polling mode...")
+            try:
+                import asyncio
+                loop = asyncio.new_event_loop()
+                asyncio.set_event_loop(loop)
+                loop.run_until_complete(application.run_polling(allowed_updates=Update.ALL_TYPES, stop_signals=None))
+            except Exception as poll_e:
+                print(f"❌ Polling also failed: {poll_e}")
+
+    # Start bot setup in background thread
+    bot_thread = threading.Thread(target=setup_webhook, daemon=True)
     bot_thread.start()
     return True
 
